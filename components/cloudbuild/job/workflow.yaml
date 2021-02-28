@@ -1,0 +1,127 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - project_id: ${args.project_id}
+          - build: ${args.build}
+        next: trigger_job
+    - trigger_job:
+        call: cloudbuild_job_trigger
+        args:
+            project: ${project_id}
+            build: ${build}
+        result: job
+        next: wait_for_completion
+    - wait_for_completion:
+        call: cloudbuild_job_status
+        args:
+            operation: ${job.name}
+        result: job
+        next: exit
+    - exit:
+        return: ${job}
+
+cloudbuild_job_trigger:
+  params: [project, build]
+  steps:
+    - trigger_codebuild:
+        try: 
+          call: http.post
+          args:
+            url: ${"https://cloudbuild.googleapis.com/v1/projects/"+project+"/builds"}
+            auth:
+              type: OAuth2
+            body: ${build}
+          result: result
+        except:
+          as: e
+          steps:
+            - raise_exception:
+                raise: ${e}
+        next: format_cloudbuild_log
+    - format_cloudbuild_log:
+        assign:
+          - cloudbuild:
+              create_time: ${result.body.metadata.build.createTime}
+              id: ${result.body.metadata.build.id}
+              log_url: ${result.body.metadata.build.logUrl}
+              logs_bucket: ${result.body.metadata.build.logsBucket}
+              name: ${result.body.metadata.build.name}
+              project_id: ${result.body.metadata.build.projectId}
+        next: log
+    - log:
+        call: sys.log
+        args:
+            text: ${json.encode_to_string(cloudbuild)}
+            severity: INFO
+        next: exit
+    - exit:
+        return: ${cloudbuild}
+
+
+cloudbuild_job_status:
+  params: [operation]
+  steps:
+    - init:
+        assign:
+          - job: 
+              status: "RUNNING"
+    - check_condition:
+        switch:
+          - condition: ${job.status == "RUNNING" or job.status == "QUEUED"}
+            next: wait_job
+          - condition: ${job.status == "FAILURE" or job.status == "CANCELLED" or job.status == "TIMEOUT" or job.status == "FAILED"}
+            next: failed_job
+          - condition: ${job.status == "SUCCESS"}
+            next: success_job
+    - wait_job:
+        call: sys.sleep
+        args:
+          seconds: 30
+        next: fetch_status
+    - fetch_status:
+        steps:
+          - fetch_job:
+              try:
+                call: http.get
+                args:
+                  url: ${"https://cloudbuild.googleapis.com/v1/"+operation}
+                  auth:
+                    type: OAuth2
+                result: result
+              except:
+                as: e
+                steps:
+                  - raise_exception:
+                      raise: ${e}
+              next: update_job
+          - update_job:
+              assign:
+                - job: ${result.body}
+              next: log
+          - log:
+              call: sys.log
+              args:
+                text: ${json.encode_to_string(job)}
+                severity: INFO              
+        next: check_condition
+    - failed_job:
+        raise:
+          code: ${job.error.code} 
+          message: ${job.error.message}
+    - success_job:
+        steps:
+          - format_output:
+              assign:
+                - job:
+                    create_time: ${job.createTime}
+                    finish_time: ${job.finishTime}
+                    status: ${job.status}
+                    id: ${job.id}
+                    log_url: ${job.logUrl}
+                    logs_bucket: ${job.logsBucket}
+                    name: ${job.name}
+                    project_id: ${job.projectId}
+          - exit:
+              return: ${job}

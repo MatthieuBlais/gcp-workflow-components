@@ -1,0 +1,30 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - bucket: ${args.bucket}
+          - key: ${args.key}
+    - download:
+        try:
+          call: http.get
+          args:
+            url: ${"https://storage.googleapis.com/"+bucket+"/"+key}
+            auth:
+              type: OAuth2
+          result: result
+        except:
+          as: e
+          steps:
+            - raise_exception:
+                raise: ${e}
+    - format_log:
+        assign:
+          - file_content: ${result.body}
+    - log:
+        call: sys.log
+        args:
+          text: ${json.encode_to_string(file_content)}
+          severity: INFO
+    - exit:
+        return: ${file_content}
