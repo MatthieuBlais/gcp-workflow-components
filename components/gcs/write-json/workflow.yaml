@@ -1,0 +1,37 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - bucket: ${args.bucket}
+          - key: ${args.key}
+          - object: ${args.object}
+    - upload:
+        try:
+          call: http.post
+          args:
+            url: ${"https://storage.googleapis.com/upload/storage/v1/b/"+bucket+"/o"}
+            auth:
+              type: OAuth2
+            headers:
+              Content-Type: "application/json"
+            query:
+              uploadType: media
+              name: ${args.key}
+            body: ${object}
+          result: result
+        except:
+          as: e
+          steps:
+            - raise_exception:
+                raise: ${e}
+    - format_log:
+        assign:
+          - new_object: ${result.body}
+    - log:
+        call: sys.log
+        args:
+          text: ${json.encode_to_string(new_object)}
+          severity: INFO
+    - exit:
+        return: ${new_object}

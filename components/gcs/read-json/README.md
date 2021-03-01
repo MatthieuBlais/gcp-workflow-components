@@ -4,12 +4,12 @@ Download and Parse a JSON file from GS
 
 #### Deploy
 
-`
-gcloud workflows deploy workflow-component-gcs-readjson \
+```
+gcloud workflows deploy workflow-component-gcs-read-json \
 --source=workflow.yaml \ 
 [--location=MY_LOCATION]
 [--service-account=MY_SERVICE_ACCOUNT@MY_PROJECT.IAM.GSERVICEACCOUNT.COM]
-`
+```
 
 #### Parameters
 

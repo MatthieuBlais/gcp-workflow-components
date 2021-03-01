@@ -5,12 +5,12 @@ Trigger a CloudBuild job and wait for its completion.
 
 #### Deploy
 
-`
-gcloud workflows deploy my-test-workflow \
+```
+gcloud workflows deploy workflow-component-cloudbuild-job \
 --source=workflow.yaml \ 
 [--location=MY_LOCATION]
 [--service-account=MY_SERVICE_ACCOUNT@MY_PROJECT.IAM.GSERVICEACCOUNT.COM]
-`
+```
 
 #### Parameters
 

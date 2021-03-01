@@ -4,12 +4,12 @@ Trigger a Kubernetes Job (kind: Job) and wait for its completion.
 
 #### Deploy
 
-`
+```
 gcloud workflows deploy workflow-component-kubernetes-job \
 --source=workflow.yaml \ 
 [--location=MY_LOCATION]
 [--service-account=MY_SERVICE_ACCOUNT@MY_PROJECT.IAM.GSERVICEACCOUNT.COM]
-`
+```
 
 #### Parameters
 

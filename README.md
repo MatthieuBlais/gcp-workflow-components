@@ -13,6 +13,7 @@ The goal of these components is to have common integration for calling other GCP
  
 ### Integrations
 
-- Cloudbuild job: Trigger a CloudBuild job and wait for it to complete
-- GCS JSON Read: Read a JSON object from Google Storage
+- Cloudbuild job: Trigger a CloudBuild job and wait for it to complete.
+- GCS JSON Read: Read a JSON object from Google Storage.
+- GCS List Objects: List objects from a GCS bucket.
 - GKE Batch Job: Execute a Kubernetes batch job on GKE.

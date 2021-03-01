@@ -133,7 +133,7 @@ gke_job_status:
                       _JOB_NAME: ${job_name}
               result: status_cloudbuild
               next: get_job_log
-          - get_job_log:
+          - get_job_log: #To replace by gcs read-json component
               steps:
                 - download:
                     call: http.get
