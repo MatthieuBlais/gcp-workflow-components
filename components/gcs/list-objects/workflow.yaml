@@ -1,0 +1,31 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - bucket: ${args.bucket}
+          - query: ${args.query}
+    - list_items:
+        try:
+          call: http.get
+          args:
+            url: ${"https://storage.googleapis.com/storage/v1/b/"+bucket+"/o"}
+            auth:
+              type: OAuth2
+            query: ${query}
+          result: result
+        except:
+          as: e
+          steps:
+            - raise_exception:
+                raise: ${e}
+    - format_log:
+        assign:
+          - items: ${result.body}
+    - log:
+        call: sys.log
+        args:
+          text: ${json.encode_to_string(items)}
+          severity: INFO
+    - exit:
+        return: ${items}

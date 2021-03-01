@@ -1,0 +1,175 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - cloudbuild_component: "workflow-component-cloudbuild"
+          - project_id: ${args.project_id}
+          - job_name: ${args.workflow_id+"-"+args.workflow_exec+"-"+args.job_name}
+          - compute_zone: ${args.compute_zone}
+          - cluster_name: ${args.cluster_name}
+          - job_definition_location: ${args.job_definition_location}
+          - gcs_log_bucket: ${args.gcs_log_bucket}
+          - gcs_log_prefix: ${args.gcs_log_prefix}
+        next: submit_job
+    - submit_job:
+        call: gke_job_submit
+        args:
+            cloudbuild_component: ${cloudbuild_component}
+            project_id: ${project_id}
+            job_name: ${job_name}
+            compute_zone: ${compute_zone}
+            cluster_name: ${cluster_name}
+            job_definition_location: ${job_definition_location}
+        result: job
+        next: wait_for_completion
+    - wait_for_completion:
+        call: gke_job_status
+        args:
+            cloudbuild_component: ${cloudbuild_component}
+            project_id: ${project_id}
+            job_name: ${job_name}
+            compute_zone: ${compute_zone}
+            cluster_name: ${cluster_name}
+            gcs_log_bucket: ${gcs_log_bucket}
+            gcs_log_prefix: ${gcs_log_prefix}
+        result: job
+        next: exit
+    - exit:
+        return: ${job}
+
+gke_job_submit:
+  params: [project_id, cloudbuild_component, compute_zone, cluster_name, job_definition_location, job_name]
+  steps:
+    - submit_job:
+        steps:
+          - trigger_cloudbuild:
+              call: experimental.executions.run
+              args:
+                workflow_id: ${cloudbuild_component}
+                argument:
+                  project_id: ${project_id}
+                  build:
+                    steps:
+                      - name: 'gcr.io/cloud-builders/gcloud'
+                        env:
+                        - 'CLUSTER_COMPUTE_ZONE=${_COMPUTE_ZONE}'
+                        - 'CLUSTER_NAME=${_CLUSTER_NAME}'
+                        - 'CONTAINER_DEFINITION_LOCATION=${_JOB_DEF_LOCATION}'
+                        - 'JOB_NAME=${_JOB_NAME}'
+                        entrypoint: 'sh'
+                        args:
+                        - '-c'
+                        - |
+                            gcloud container clusters get-credentials "$${CLUSTER_NAME}" --zone "$${CLUSTER_COMPUTE_ZONE}" && \
+                            gsutil cp $${CONTAINER_DEFINITION_LOCATION} job.yaml && \
+                            sed -i "s/{{JOBNAME}}/$${JOB_NAME}/g" job.yaml && \
+                            kubectl create -f job.yaml
+                    substitutions:
+                      _COMPUTE_ZONE: ${compute_zone}
+                      _CLUSTER_NAME: ${cluster_name}
+                      _JOB_DEF_LOCATION: ${job_definition_location}
+                      _JOB_NAME: ${job_name}
+              result: submit_build
+              next: log_cloudbuild
+          - log_cloudbuild:
+              call: sys.log
+              args:
+                text: ${json.encode_to_string(submit_build)}
+                severity: INFO
+        next: exit
+    - exit:
+        return: ${submit_build}
+
+gke_job_status:
+  params: [project_id, cloudbuild_component, compute_zone, cluster_name, gcs_log_bucket, gcs_log_prefix, job_name]
+  steps:
+    - init:
+        assign:
+          - job:
+              status:
+                active: true
+          - gcs_log_location: ${"gs://"+gcs_log_bucket+"/"+gcs_log_prefix}
+        next: check_condition
+    - check_condition:
+        switch:
+          - condition: ${"conditions" in job.status AND job.status.conditions[0].type == "Complete" and job.status.conditions[0].status == "True"}
+            next: success_job
+          - condition: ${"conditions" in job.status AND job.status.conditions[0].type == "Failed" and job.status.conditions[0].status == "True"}
+            next: failed_job
+        next: wait_job
+    - wait_job:
+        call: sys.sleep
+        args:
+          seconds: 30
+        next: fetch_status
+    - fetch_status:
+        steps:
+          - trigger_cloudbuild:
+              call: experimental.executions.run
+              args:
+                workflow_id: ${cloudbuild_component}
+                argument:
+                  project_id: ${project_id}
+                  build:
+                    steps:
+                      - name: 'gcr.io/cloud-builders/gcloud'
+                        env:
+                        - 'CLUSTER_COMPUTE_ZONE=${_COMPUTE_ZONE}'
+                        - 'CLUSTER_NAME=${_CLUSTER_NAME}'
+                        - 'GCS_LOG_LOCATION=${_GCS_LOG_LOCATION}'
+                        - 'JOB_NAME=${_JOB_NAME}'
+                        entrypoint: 'sh'
+                        args:
+                        - '-c'
+                        - |
+                            gcloud container clusters get-credentials "$${CLUSTER_NAME}" --zone "$${CLUSTER_COMPUTE_ZONE}" && \
+                            kubectl get job $${JOB_NAME} -o json > job.json && \
+                            gsutil cp job.json $${GCS_LOG_LOCATION}$${JOB_NAME}.json
+                    substitutions:
+                      _COMPUTE_ZONE: ${compute_zone}
+                      _CLUSTER_NAME: ${cluster_name}
+                      _GCS_LOG_LOCATION: ${gcs_log_location}
+                      _JOB_NAME: ${job_name}
+              result: status_cloudbuild
+              next: get_job_log
+          - get_job_log: #To replace by gcs read-json component
+              steps:
+                - download:
+                    call: http.get
+                    args:
+                      url: ${"https://storage.googleapis.com/"+gcs_log_bucket+"/"+gcs_log_prefix+job_name+".json"}
+                      auth:
+                        type: OAuth2
+                    result: result
+                - format_log:
+                    assign:
+                      - job: ${result.body}
+                - log:
+                    call: sys.log
+                    args:
+                      text: ${json.encode_to_string(job)}
+                      severity: INFO
+        next: check_condition
+    - success_job:
+        steps:
+          - format_output:
+              assign:
+                - job:
+                    apiVersion: ${job.apiVersion}
+                    kind: ${job.kind}
+                    metadata:
+                      creationTimestamp: ${job.metadata.creationTimestamp}
+                      name: ${job.metadata.name}
+                      namespace: ${job.metadata.namespace}
+                      resourceVersion: ${job.metadata.resourceVersion}
+                      selfLink: ${job.metadata.selfLink}
+                      uid: ${job.metadata.uid}
+                    spec: ${job.spec}
+                    status: ${job.status}
+          - exit:
+              return: ${job}
+    - failed_job:
+        raise:
+          code: 1
+          message: ${json.encode_to_string(job)}
