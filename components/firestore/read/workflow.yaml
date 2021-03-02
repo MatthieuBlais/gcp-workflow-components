@@ -1,0 +1,40 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - project: ${args.project_id}
+          - collection: ${args.collection}
+          - document_key: ${args.document_key}
+    - fetch:
+        try:
+          call: http.get
+          args:
+            url: ${"https://firestore.googleapis.com/v1/projects/"+project+"/databases/(default)/documents/"+collection+"/"+document_key}
+            auth:
+              type: OAuth2
+          result: document
+        except:
+          as: e
+          steps:
+            - isTheKeyFound:
+                switch:
+                - condition: ${e.code == 404}
+                  next: documentNotFound
+                - condition: ${e.code == 403}
+                  next: authError
+    - format_log:
+        assign:
+          - document: ${document.body}
+    - log:
+        call: sys.log
+        args:
+          text: ${json.encode_to_string(document)}
+          severity: INFO
+        next: exit
+    - documentNotFound:
+        return: "Document not found."
+    - authError:
+        return: "Authentication error."
+    - exit:
+        return: ${document}

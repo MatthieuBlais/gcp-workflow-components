@@ -1,0 +1,43 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - project: ${args.project_id}
+          - collection: ${args.collection}
+          - document_key: ${args.document_key}
+    - delete:
+        try:
+          call: http.request
+          args:
+            url: ${"https://firestore.googleapis.com/v1/projects/"+project+"/databases/(default)/documents/"+collection+"/"+document_key}
+            auth:
+              type: OAuth2
+            method: DELETE
+        except:
+          as: e
+          steps:
+            - isTheKeyFound:
+                switch:
+                - condition: ${e.code == 404}
+                  next: documentNotFound
+                - condition: ${e.code == 403}
+                  next: authError
+    - format_log:
+        assign:
+          - response:
+              success: true
+              document_key: ${document_key}
+              collection: ${collection}
+    - log:
+        call: sys.log
+        args:
+          text: ${json.encode_to_string(response)}
+          severity: INFO
+        next: exit
+    - documentNotFound:
+        return: "Document not found."
+    - authError:
+        return: "Authentication error."
+    - exit:
+        return: ${response}
