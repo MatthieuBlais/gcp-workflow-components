@@ -5,6 +5,7 @@ main:
         assign:
           - project_id: ${args.projectId}
           - job: ${args.job}
+          - wait: ${args.wait}
         next: submit_job
     - submit_job:
         call: ai_job_submit
@@ -13,6 +14,12 @@ main:
             job: ${job}
         result: job
         next: wait_for_completion
+    - check_wait_condition:
+        switch:
+          - condition: ${wait}
+            next: wait_for_completion
+          - condition: ${not(wait)}
+            next: exit
     - wait_for_completion:
         call: ai_job_status
         args:
