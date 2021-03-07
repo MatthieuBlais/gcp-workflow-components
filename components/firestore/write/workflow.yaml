@@ -1,0 +1,41 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - project: ${args.project_id}
+          - collection: ${args.collection}
+          - document_key: ${args.document_key}
+          - document: ${args.document}
+    - fetch:
+        try:
+          call: http.request
+          args:
+            url: ${"https://firestore.googleapis.com/v1/projects/"+project+"/databases/(default)/documents/"+collection+"/"+document_key}
+            auth:
+              type: OAuth2
+            method: PATCH
+            body:
+              name: ${"projects/"+project+"/databases/(default)/documents/"+collection+"/"+document_key}
+              fields: ${document}
+          result: document
+        except:
+          as: e
+          steps:
+            - isTheKeyFound:
+                switch:
+                - condition: ${e.code == 403}
+                  next: authError
+    - format_log:
+        assign:
+          - document: ${document.body}
+    - log:
+        call: sys.log
+        args:
+          text: ${json.encode_to_string(document)}
+          severity: INFO
+        next: exit
+    - authError:
+        return: "Authentication error."
+    - exit:
+        return: ${document}

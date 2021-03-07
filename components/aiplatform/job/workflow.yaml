@@ -1,0 +1,103 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - project_id: ${args.projectId}
+          - job: ${args.job}
+          - wait: ${args.wait}
+        next: submit_job
+    - submit_job:
+        call: ai_job_submit
+        args:
+            project_id: ${project_id}
+            job: ${job}
+        result: job
+        next: wait_for_completion
+    - check_wait_condition:
+        switch:
+          - condition: ${wait}
+            next: wait_for_completion
+          - condition: ${not(wait)}
+            next: exit
+    - wait_for_completion:
+        call: ai_job_status
+        args:
+            project_id: ${project_id}
+            job: ${job}
+        result: job
+        next: exit
+    - exit:
+        return: ${job}
+
+ai_job_submit:
+  params: [project_id, job]
+  steps:
+    - call:
+        try:
+          call: http.post
+          args:
+            url: ${ "https://ml.googleapis.com/v1/projects/"+project_id+"/jobs" }
+            auth:
+              type: OAuth2
+            body: ${job}
+          result: result
+        except:
+          as: e
+          steps:
+            - raise_exception:
+                raise: ${e.body}
+    - format_log:
+        assign:
+          - response: ${result.body}
+    - log:
+        call: sys.log
+        args:
+          text: ${json.encode_to_string(response)}
+          severity: INFO
+    - exit:
+        return: ${response}
+
+ai_job_status:
+  params: [project_id, job]
+  steps:
+    - check_condition:
+        switch:
+          - condition: ${job.state == "FAILED" or job.state == "CANCELLED" }
+            next: failed_job
+          - condition: ${job.state == "SUCCEEDED"}
+            next: success_job
+        next: wait_job
+    - wait_job:
+        call: sys.sleep
+        args:
+          seconds: 60
+        next: fetch_status
+    - fetch_status:
+        steps:
+          - call:
+              try:
+                call: http.get
+                args:
+                  url: ${ "https://ml.googleapis.com/v1/projects/"+project_id+"/jobs/"+job.jobId }
+                  auth:
+                    type: OAuth2
+                result: result
+              except:
+                as: e
+                steps:
+                  - raise_exception:
+                      raise: ${e.body}
+          - format_log:
+              assign:
+                - job: ${result.body}
+          - log:
+              call: sys.log
+              args:
+                text: ${json.encode_to_string(job)}
+                severity: INFO
+        next: check_condition
+    - success_job:
+        return: ${job}
+    - failed_job:
+        raise: ${job}

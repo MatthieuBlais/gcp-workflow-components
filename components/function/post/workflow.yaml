@@ -1,0 +1,33 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - location: ${args.location}
+          - project: ${args.project_id}
+          - entrypoint: ${args.entrypoint}
+          - data: ${args.data}
+    - call:
+        try:
+          call: http.post
+          args:
+            url: ${"https://" + location + "-" + project +".cloudfunctions.net/" + entrypoint }
+            auth:
+              type: OAuth2
+            body: ${data}
+          result: result
+        except:
+          as: e
+          steps:
+            - raise_exception:
+                raise: ${e}
+    - format_log:
+        assign:
+          - response: ${result.body}
+    - log:
+        call: sys.log
+        args:
+          text: ${json.encode_to_string(response)}
+          severity: INFO
+    - exit:
+        return: ${response}

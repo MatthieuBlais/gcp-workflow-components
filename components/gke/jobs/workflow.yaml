@@ -11,6 +11,7 @@ main:
           - job_definition_location: ${args.job_definition_location}
           - gcs_log_bucket: ${args.gcs_log_bucket}
           - gcs_log_prefix: ${args.gcs_log_prefix}
+          - wait: ${args.wait}
         next: submit_job
     - submit_job:
         call: gke_job_submit
@@ -22,7 +23,13 @@ main:
             cluster_name: ${cluster_name}
             job_definition_location: ${job_definition_location}
         result: job
-        next: wait_for_completion
+        next: check_wait_condition
+    - check_wait_condition:
+        switch:
+          - condition: ${wait}
+            next: wait_for_completion
+          - condition: ${not(wait)}
+            next: exit
     - wait_for_completion:
         call: gke_job_status
         args:

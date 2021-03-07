@@ -23,7 +23,7 @@ gcloud workflows deploy workflow-component-kubernetes-job \
 - job_definition_location: GCS location of the Job YAML file.
 - gcs_log_bucket: Bucket used by the component workflow to share data/logs between each step.
 - gcs_log_prefix: Prefix used by the component workflow to share data/logs between each step.
-
+- wait: Asynchronous execution (false) or wait for the job to complete before exiting. Current timeout for parallel workflow execution is 30min. If you job is longer than 30min, you should use wait: false
 
 #### Example
 
