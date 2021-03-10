@@ -1,11 +1,11 @@
-### AI Platform Training Job
+### AI Platform Get Training Job
 
-Trigger a training job on the AI Platform and wait for its completion
+Fetch the latest details of a training job. Useful to check job status.
 
 #### Deploy
 
 ```
-gcloud workflows deploy workflow-component-aiplatform-job \
+gcloud workflows deploy workflow-component-aiplatform-getjob \
 --source=workflow.yaml \ 
 [--location=MY_LOCATION]
 [--service-account=MY_SERVICE_ACCOUNT@MY_PROJECT.IAM.GSERVICEACCOUNT.COM]
@@ -14,25 +14,7 @@ gcloud workflows deploy workflow-component-aiplatform-job \
 #### Parameters
 
 - projectId: Training job Project ID. If same as Workflow, you can use ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
-- job: [Job object](https://cloud.google.com/ai-platform/training/docs/reference/rest/v1/projects.jobs#Job)
-- wait: boolean. Wait for the job to complete or not. If you call this component as part of another workflow, note the current GCP hard limit is a timeout of 30min. If you training job is longer, you should set wait to false and build the waiting logic as part of your main workflow.
-
-
-##### Job example
-
-{
-    "jobId": "serverlesstesting",
-    "trainingInput": {
-        "scaleTier": "CUSTOM",
-        "masterType": "n1-standard-4",
-        "region": "asia-southeast1",
-        "jobDir": "gs://xxxx-306xxx-ml",
-        "masterConfig": {
-            "imageUri": "gcr.io/xxxx-306xxx/serverlessml_training_container"
-        }
-    }
-}
-
+- jobId: Id of the training job.
 
 #### Example
 
@@ -44,6 +26,7 @@ steps:
         workflow_id: "workflow-component-aiplatform-job"
         argument:
             projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+            wait: false
             job:
                 jobId: serverlesstesting
                 trainingInput:
@@ -54,6 +37,13 @@ steps:
                     region: asia-southeast1
                     scaleTier: CUSTOM
     result: job
+- get_status:
+    call: experimental.executions.run
+    args: 
+        workflow_id: "workflow-component-aiplatform-jobstatus"
+        argument:
+            projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+            jobId: ${job.jobId}
 ```
 
 #### Output
