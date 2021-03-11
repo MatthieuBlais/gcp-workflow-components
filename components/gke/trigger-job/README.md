@@ -2,6 +2,10 @@
 
 Trigger a Kubernetes Job (kind: Job) and wait for its completion.
 
+
+**Limitation:** Currently limited to 30min job due to Timeout of the experimental API.
+**TODO**: Create a new component get-job (can get from the step wait_for_completion) to workaround this timeout issue.
+
 #### Deploy
 
 ```

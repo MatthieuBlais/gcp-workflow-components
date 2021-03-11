@@ -1,6 +1,6 @@
 ### AI Platform Training Job
 
-Trigger a training job on the AI Platform and wait for its completion
+Trigger a training job on the AI Platform and can wait for its completion
 
 #### Deploy
 
