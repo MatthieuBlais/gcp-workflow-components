@@ -1,0 +1,204 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - execution_id: ${args.execution_id}
+          - bq_location: ${args.bq_location}
+          - ai_location: ${args.ai_location}
+          - dataset_id: ${args.dataset_id}
+          - data_bucket: ${args.data_bucket}
+          - training_image: ${args.training_image}
+          - table_id: "feateng_training_data"
+          - training_data: "taxi-train-*.csv"
+          - validation_data: "taxi-valid-*.csv"
+          - training_machine_type: "n1-standard-4"
+    - create_training_dataset:
+        call: training_dataset
+        args:
+            project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+            bq_location: ${bq_location}
+            data_bucket: ${data_bucket}
+            training_data: ${training_data}
+            dataset_id: ${dataset_id}
+            table_id: ${table_id}
+    - create_validation_dataset:
+        call: validation_dataset
+        args:
+            project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+            bq_location: ${bq_location}
+            data_bucket: ${data_bucket}
+            validation_data: ${validation_data}
+            dataset_id: ${dataset_id}
+            table_id: ${table_id}
+    - train_model:
+        call: model_training
+        args:
+            project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+            job_id: ${"serverlesstesting_"+execution_id}
+            data_bucket: ${data_bucket}
+            training_image: ${training_image}
+            training_machine_type: ${training_machine_type}
+            ai_location: ${ai_location}
+        result: trainingjob
+    - exit:
+        return: ${trainingjob}
+
+training_dataset:
+  params: [project_id, bq_location, data_bucket, training_data, dataset_id, table_id]
+  steps:
+    - prepare_training_dataset:
+        call: experimental.executions.run
+        args: 
+          workflow_id: "workflow-component-bigquery-query"
+          argument:
+            projectId: ${project_id}
+            query:
+              location: ${bq_location}
+              useLegacySql: false
+              query: |
+                CREATE OR REPLACE TABLE serverlessml.feateng_training_data AS
+                SELECT
+                  (tolls_amount + fare_amount) AS fare_amount,
+                  pickup_datetime,
+                  pickup_longitude AS pickuplon,
+                  pickup_latitude AS pickuplat,
+                  dropoff_longitude AS dropofflon,
+                  dropoff_latitude AS dropofflat,
+                  passenger_count*1.0 AS passengers,
+                  'unused' AS key
+                FROM `nyc-tlc.yellow.trips`
+                WHERE ABS(MOD(FARM_FINGERPRINT(CAST(pickup_datetime AS STRING)), 1000)) = 1
+                AND
+                  trip_distance > 0
+                  AND fare_amount >= 2.5
+                  AND pickup_longitude > -78
+                  AND pickup_longitude < -70
+                  AND dropoff_longitude > -78
+                  AND dropoff_longitude < -70
+                  AND pickup_latitude > 37
+                  AND pickup_latitude < 45
+                  AND dropoff_latitude > 37
+                  AND dropoff_latitude < 45
+                  AND passenger_count > 0
+    - extract_training_dataset:
+        call: experimental.executions.run
+        args: 
+          workflow_id: "workflow-component-bigquery-job"
+          argument:
+            projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+            job:
+              configuration:
+                extract:
+                  destinationUris:
+                    - ${"gs://"+ data_bucket + "/quests/serverlessml2/data/" + training_data }
+                  destinationFormat: "CSV"
+                  fieldDelimiter: ","
+                  sourceTable:
+                    projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+                    datasetId: ${dataset_id}
+                    tableId: ${table_id}
+
+validation_dataset:
+  params: [project_id, bq_location, data_bucket, validation_data, dataset_id, table_id]
+  steps:
+    - prepare_validation_dataset:
+        call: experimental.executions.run
+        args: 
+          workflow_id: "workflow-component-bigquery-query"
+          argument:
+            projectId: ${project_id}
+            query:
+              location: ${bq_location}
+              useLegacySql: false
+              query: |
+                CREATE OR REPLACE TABLE serverlessml.feateng_valid_data AS
+                SELECT
+                  (tolls_amount + fare_amount) AS fare_amount,
+                  pickup_datetime,
+                  pickup_longitude AS pickuplon,
+                  pickup_latitude AS pickuplat,
+                  dropoff_longitude AS dropofflon,
+                  dropoff_latitude AS dropofflat,
+                  passenger_count*1.0 AS passengers,
+                  'unused' AS key
+                FROM `nyc-tlc.yellow.trips`
+                WHERE ABS(MOD(FARM_FINGERPRINT(CAST(pickup_datetime AS STRING)), 10000)) = 2
+                AND
+                  trip_distance > 0
+                  AND fare_amount >= 2.5
+                  AND pickup_longitude > -78
+                  AND pickup_longitude < -70
+                  AND dropoff_longitude > -78
+                  AND dropoff_longitude < -70
+                  AND pickup_latitude > 37
+                  AND pickup_latitude < 45
+                  AND dropoff_latitude > 37
+                  AND dropoff_latitude < 45
+                  AND passenger_count > 0
+    - extract_validation_dataset:
+        call: experimental.executions.run
+        args: 
+          workflow_id: "workflow-component-bigquery-job"
+          argument:
+            projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+            job:
+              configuration:
+                extract:
+                  destinationUris:
+                    - ${"gs://"+ data_bucket + "/quests/serverlessml2/data/" + validation_data }
+                  destinationFormat: "CSV"
+                  fieldDelimiter: ","
+                  sourceTable:
+                    projectId: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+                    datasetId: ${dataset_id}
+                    tableId: ${table_id}
+
+
+model_training:
+  params: [project_id, job_id, data_bucket, training_image, training_machine_type, ai_location]
+  steps:
+    - train_model:
+        call: experimental.executions.run
+        args: 
+          workflow_id: "workflow-component-aiplatform-job"
+          argument:
+            projectId: ${project_id}
+            wait: false
+            job:
+              jobId: ${job_id} 
+              trainingInput:
+                jobDir: ${"gs://"+data_bucket}
+                masterConfig:
+                  imageUri: ${training_image}
+                masterType: ${training_machine_type}
+                region: ${ai_location}
+                scaleTier: CUSTOM
+        result: trainingjob
+    - wait_for_training_completion:
+        steps:
+          - check_condition:
+              switch:
+                - condition: ${trainingjob.state == "FAILED" or trainingjob.state == "CANCELLED" }
+                  next: failed_job
+                - condition: ${trainingjob.state == "SUCCEEDED"}
+                  next: success_job
+              next: wait_job
+          - wait_job:
+              call: sys.sleep
+              args:
+                seconds: 60
+              next: fetch_status
+          - fetch_status:
+              call: experimental.executions.run
+              args: 
+                workflow_id: "workflow-component-aiplatform-getjob"
+                argument:
+                  projectId: ${project_id}
+                  jobId: ${job_id}
+              result: trainingjob
+              next: check_condition
+    - success_job:
+        return: ${trainingjob}
+    - failed_job:
+        raise: ${trainingjob}

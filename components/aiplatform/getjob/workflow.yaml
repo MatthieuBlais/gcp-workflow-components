@@ -1,0 +1,31 @@
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - project_id: ${args.projectId}
+          - job_id: ${args.jobId}
+        next: call
+    - call:
+        try:
+          call: http.get
+          args:
+            url: ${ "https://ml.googleapis.com/v1/projects/"+project_id+"/jobs/"+job_id }
+            auth:
+              type: OAuth2
+          result: result
+        except:
+          as: e
+          steps:
+            - raise_exception:
+                raise: ${e.body}
+    - format_log:
+        assign:
+          - job: ${result.body}
+    - log:
+        call: sys.log
+        args:
+          text: ${json.encode_to_string(job)}
+          severity: INFO
+    - exit:
+        return: ${job}
