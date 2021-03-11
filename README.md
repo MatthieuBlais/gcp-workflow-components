@@ -16,22 +16,28 @@ In the components folder, you can find custom integrations for:
 **AI Platform**: 
 - Trigger Training job
 - Get status of a training job
+
 **BigQuery**:
 - Trigger a job
 - Trigger a query
+
 **CloudBuild**:
 - Trigger a build
+
 **Firestore**:
 - Delete a document
 - Read a document
 - Write a document
+
 **CloudFunction**:
 - GET invocation
 - POST invocation
+
 **GCS**:
 - Read a JSON object
 - List objects
 - Write JSON object
+
 **GKE**:
 - Trigger batch Job
 
@@ -40,4 +46,5 @@ In the components folder, you can find custom integrations for:
 ### Examples
 
 **Serverless ML Pipeline**: Extract datasets from BigQuery and trigger a ML training job.
+
 **Serverless Batch Job**: Execute a Batch job using GKE Autopilot.
